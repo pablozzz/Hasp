@@ -1,0 +1,134 @@
+/*
+Some emulated functions need to be resolved manually:
+GetCommandLineA
+GetProcAddress
+GetCurrentProcess
+GetStartupInfoA
+GetCurrentProcessId
+GetCurrentThreadId
+/////////////////////////////////////////////////////////////////////////////////
+*/
+var prtc_sec
+var iat_cell
+var ss
+var es
+var gtc
+var endp
+var iatstart
+var iatend
+var gtc_c
+var sysmod
+var rdata
+var rdsize
+var code
+var csize
+var oep
+var fdump
+@init:
+ask "Enter start address of rdata"
+cmp $RESULT, 0
+je @halt
+mov rdata, $RESULT
+ask "Enter start size of rdata"
+cmp $RESULT, 0
+je @halt
+mov rdsize, $RESULT
+gpa "GetTickCount", "kernel32.dll"
+mov gtc, $RESULT
+ask "Enter start code section address"
+cmp $RESULT, 0
+je @halt
+mov code, $RESULT
+mov ss, $RESULT
+mov es, $RESULT
+ask "Enter size of code section"
+cmp $RESULT, 0
+je @halt
+mov csize, $RESULT
+
+@oep_finder:
+bprm rdata, rdsize
+run
+bpmc
+bprm code, csize
+run
+bpmc
+mov oep, eip
+ask "Enter filename to dumping"
+cmp $RESULT, 0
+je @halt
+mov fdump, $RESULT
+dpe fdump, eip
+MSGYN "Stop on OEP, fix it. Application dumped in c:\dump.exe. Now you can start ImpREC, then press ok"
+cmp $RESULT, 1
+je @iat_recover
+ret
+@iat_recover:
+ask "Enter start address of IAT"
+cmp $RESULT, 0
+je @halt
+mov iatstart, $RESULT
+ask "Enter end address of IAT"
+cmp $RESULT, 0
+je @halt
+mov iatend, $RESULT
+ask "Enter start address of `.protect` section"
+cmp $RESULT, 0
+je @halt
+mov prtc_sec, $RESULT
+ask "Enter start address of system modules memory"
+cmp $RESULT, 0
+je @halt
+mov sysmod, $RESULT
+
+@end_point:
+find prtc_sec, #FFFF82D18BE55DC3#
+mov endp, $RESULT
+add endp, 4
+bphws endp, "x"
+
+@search:
+cmp iat_cell, iatend
+je @halt
+mov iat_cell, iatstart
+cmp [iatstart], 00000000
+add iatstart, 4
+je @search
+cmp [iat_cell], sysmod
+ja @search
+
+@scan:
+mov eip, [iat_cell]
+jmp @run
+
+@count:
+inc gtc_c
+cmp gtc_c, 2
+je @fix
+
+@run:
+run
+sti
+sti
+sti
+cmp eip, gtc
+je @count
+cmp gtc_c, 0
+je @search
+
+@zero_c:
+mov gtc_c, 0
+
+@fix:
+mov [iat_cell], eip
+cmp iat_cell, iatend
+je @halt
+jmp @search
+
+@halt:
+bphwc endp
+mov eip, oep
+an eip
+MSG "Script Finished. Now you can press GetImports in ImpREC"
+pause
+ret 
